@@ -34,7 +34,6 @@ defmodule Signalrex.Mixfile do
       {:poison, "~> 3.1"},
       {:tesla, "~> 0.9.0"},
       {:enchufeweb, "~> 0.1.0"},
-      {:uuid, ">= 0.0.0"},
       {:earmark, ">= 0.0.0", only: :dev},
       {:ex_doc, ">= 0.0.0", only: :dev}
     ]

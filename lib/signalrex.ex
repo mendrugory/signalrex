@@ -24,18 +24,31 @@ defmodule Signalrex do
   defmacro __using__(_) do
     quote location: :keep do
       use Tesla
+      require Logger
       @behaviour Signalrex
 
-      def start_link(args) do
-        GenServer.start_link(__MODULE__, args, [])
-      end
+      plug Tesla.Middleware.JSON
+
+      @init_time                    10
+      @init_response_attempts       3
+      @waiting_for_init_message     500
+      
+      def start_link(args, opts) do
+        GenServer.start_link(__MODULE__, args, opts)
+      end      
 
       def init(args) do
+        Process.send_after(self(), :init, @init_time)
         {:ok, args}
       end
 
-      def handle_cast({:message, message}, _from, state) do
-        case message
+      def handle_call(_msg, _from, state), do: {:reply, :ok, state}
+
+      def handle_cast(_msg, state), do: {:noreply, state}
+
+      def handle_info(:init, state) do
+        result = connect(state)
+        {:noreply, state}
       end
 
       def handle_info({:signalr_message, data}, state) do
@@ -47,9 +60,34 @@ defmodule Signalrex do
         end
       end
 
-      defp negotiate(base_url, headers, query_params) do
+      def handle_info(_msg, state), do: {:noreply, state}
+
+      defp connect(args) do
+        base_url = Map.get(args, :url)
+        nh = Map.get(args, :negotiate_headers)
+        nqp = Map.get(args, :negotiate_query_params)
+        case do_negotiate(base_url, nh, nqp) do
+          {:error, error} ->
+            Logger.error("Negotiating error: #{error}")
+          {:ok, negotiate_result} ->
+            ws_opts = Map.get(args, :ws_opts)
+            cqp = 
+              args
+              |> Map.get(:connect_query_params)
+              |> Keyword.put(:connection_token, Map.get(negotiate_result, :connection_token))
+            base_ws_url = Map.get(args, :base_ws_url)
+            case do_connect(base_ws_url, cqp, ws_opts) do
+              {:error, error} ->
+                Logger.error("Negotiating error: #{error}")
+              {:ok, ws_client} ->
+                receive_init_response(args)
+            end
+        end
+      end
+
+      defp do_negotiate(base_url, headers, query_params) do
         Logger.info("Negotiating ...")
-        response = get(negotiate_client(base_url), "/negotiate")
+        response = get(negotiate_client(base_url, headers, query_params), "/negotiate")
         if response.body["TryWebSockets"] do
           {
             :ok,
@@ -67,7 +105,7 @@ defmodule Signalrex do
         end
       end
 
-      defp connect(base_url, query_params, ws_opts \\ %{conn_mode: :once}) do
+      defp do_connect(base_url, query_params, ws_opts \\ %{conn_mode: :once}) do
         Logger.info("Connecting ...")
         case build_transport_url(base_url, query_params) do
           {:ok, url} -> 
@@ -83,7 +121,7 @@ defmodule Signalrex do
         end
       end
 
-      defp start(base_url, headers, query_params) do
+      defp do_start(base_url, headers, query_params) do
         Logger.info("Starting ...")
         response = get(start_client(base_url, headers, query_params), "/start")
         case response.body do
@@ -109,18 +147,17 @@ defmodule Signalrex do
       defp create_client(base_url, headers \\ %{}, query_params \\ []) do
         Tesla.build_client([
           {Tesla.Middleware.BaseUrl, base_url},
-          {Tesla.Middleware.JSON},
-          {Tesla.Middleware.Headers, Keyword.merge(default_headers(), headers)},
+          {Tesla.Middleware.Headers, Map.merge(default_headers(), headers)},
           {Tesla.Middleware.Query, Keyword.merge(default_query_params(), query_params)}
         ])
       end
 
       defp build_transport_url(base_url, query_params) do
-        final_query_params = default_connection_query_params(query_params)
+        final_query_params = connection_query_params(query_params)
         case Keyword.get(final_query_params, :transport) do
           "webSockets" -> 
             encoded_query_params = URI.encode_query(final_query_params)
-            {:ok, "#{base_url}?#{encoded_query_params}"} 
+            {:ok, "#{base_url}/connect?#{encoded_query_params}"} 
           _ -> 
             {:error, "Currently only Websockets are supported by #{__MODULE__}"}
         end
@@ -130,25 +167,15 @@ defmodule Signalrex do
         %{}
       end
 
-      defp default_connection_query_params(query_params) do
-        default = Keyword.merge(default_query_params(), [transport: "webSockets"])
-        
-        query_params = 
-          case Keyword.pop(query_params, :connection_token) do
-            {nil, params} -> raise("Connection Token (:connection_token) is mandatory to connect the transport.")
-            {ct, params} -> add_query_params(params, ["connectionToken": ct], true)
-          end
-
-        query_params = 
-          case Keyword.pop(query_params, :connection_data) do
-            {nil, params} -> params
-            {cd, params} -> add_query_params(params, ["connectionData": Poison.encode!(ct)], true)
-          end          
-
-        Keyword.merge(default, query_params) 
+      defp connection_query_params(query_params) do
+        do_default_query_params(query_params, true)
       end
 
       defp start_query_params(query_params) do
+        do_default_query_params(query_params, false)
+      end
+
+      defp do_default_query_params(query_params, encoded?) do
         default =
           Keyword.merge(
             default_query_params(),
@@ -158,17 +185,16 @@ defmodule Signalrex do
         query_params = 
           case Keyword.pop(query_params, :connection_token) do
             {nil, params} -> raise("Connection Token (:connection_token) is mandatory to connect the transport.")
-            {ct, params} -> add_query_params(params, ["connectionToken": ct], false)
+            {ct, params} -> add_query_params(params, [connectionToken: ct], encoded?)
           end
 
         query_params = 
           case Keyword.pop(query_params, :connection_data) do
             {nil, params} -> params
-            {cd, params} -> add_query_params(params, ["connectionData": Poison.encode!(ct)], false)
+            {cd, params} -> add_query_params(params, [connectionData: Poison.encode!(cd)], encoded?)
           end          
 
-        Keyword.merge(default, query_params)           
-        
+        Keyword.merge(default, query_params)   
       end
 
       defp default_query_params() do
@@ -182,14 +208,35 @@ defmodule Signalrex do
       end
       
       defp add_query_params(current, new, true) when is_list(new) do
-        Enum.map(
-          new,
-          fn {k, v} -> 
-            Keyword.put(k, URI.encode_www_form(v))
-          end
+        Keyword.merge(
+          current,
+          Enum.map(new, fn {k, v} -> {k, URI.encode_www_form(v)} end)
         )
-      end     
+      end  
+      
+      defp receive_init_response(args, attempts \\ @init_response_attempts) do
+        receive do
+          msg ->
+            case Poison.decode(msg) do
+              {:ok, %{"S" => 1, "M" => []}} ->
+                base_url = Map.get(args, :url)
+                sh = Map.get(args, :start_headers)
+                sqp = Map.get(args, :start_query_params)                    
+                do_start(base_url, sh, sqp)
+              _ ->
+                if attempts > 0 do
+                  receive_init_response(args, attempts - 1)
+                else
+                  Logger.error("No initial reponse arrived in the first #{@init_response_attempts} attempts.")
+                end
+            end
+          after 
+            @waiting_for_init_message ->
+              Logger.error("The init message has not arrived in #{@waiting_for_init_message} ms.")
+        end        
+      end
     
     end  
   end
+
 end
