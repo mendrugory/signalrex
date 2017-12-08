@@ -19,3 +19,37 @@ Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_do
 and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
 be found at [https://hexdocs.pm/signalrex](https://hexdocs.pm/signalrex).
 
+## Running
+
+```elixir
+args = %{
+		url: "http://9.5.6.7:5555/signalr",
+		negotiate_headers: %{},
+		negotiate_query_params: ["my_auth": "asdfasdf", "connectionData": "[{\"id\":\"my_data\"}]"],
+		ws_opts: %{conn_mode: :once},
+		connect_query_params: ["my_auth": "asdfasdf", "connectionData": "[{\"id\":\"my_data\"}]"],
+		base_ws_url: "ws://9.5.6.7:5555/signalr",
+		start_headers: %{},
+		start_query_params: ["auth_token": "asdfasdf", "connectionData": "[{\"id\":\"my_data\"}]"]
+	}
+
+
+
+defmodule Test do
+	use Signalrex
+
+	def get_initial_message() do
+	  %{"S" => 0, "M" => [], "C" => ""} |> Poison.encode
+	end
+
+	def process_message(data, state) do
+		IO.inspect data
+		{:ok, state}
+	end
+
+end
+
+
+Test.start_link args, []
+```
+

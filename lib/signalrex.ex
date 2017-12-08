@@ -83,8 +83,8 @@ defmodule Signalrex do
               args
               |> Map.get(:connect_query_params)
               |> Keyword.put(:connection_token, Map.get(negotiate_result, :connection_token))
+            args = Map.merge(args, negotiate_result)
             base_ws_url = Map.get(args, :base_ws_url)
-            IO.inspect cqp
             case do_connect(base_ws_url, cqp, ws_opts) do
               {:error, error} ->
                 Logger.error("Connecting error: #{error}")
@@ -99,7 +99,6 @@ defmodule Signalrex do
       defp do_negotiate(base_url, headers, query_params) do
         Logger.info("Negotiating ...")
         response = get(negotiate_client(base_url, headers, query_params), "/negotiate")
-        IO.inspect response
         if response.body["TryWebSockets"] do
           {
             :ok,
@@ -147,16 +146,10 @@ defmodule Signalrex do
 
       defp negotiate_client(base_url, headers, query_params) do
         create_client(base_url, headers, query_params)
-      end 
+      end    
 
       defp start_client(base_url, headers, query_params) do
-        create_client(base_url, headers, query_params)
-      end       
-
-      defp start_client(base_url, headers, query_params) do
-        qp = start_query_params(query_params)
-        IO.inspect qp
-        create_client(base_url, headers, qp)
+        create_client(base_url, headers, start_query_params(query_params))
       end         
 
       defp create_client(base_url, headers \\ %{}, query_params \\ []) do
@@ -236,7 +229,9 @@ defmodule Signalrex do
               {:ok, %{"S" => 1, "M" => []}} ->
                 base_url = Map.get(args, :url)
                 sh = Map.get(args, :start_headers)
-                sqp = Map.get(args, :start_query_params)                    
+                sqp = 
+                  Map.get(args, :start_query_params)   
+                  |> Keyword.put(:connection_token, Map.get(args, :connection_token))
                 do_start(base_url, sh, sqp)
               _ ->
                 if attempts > 0 do
