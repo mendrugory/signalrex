@@ -1,4 +1,4 @@
-defmodule WSClient do
+defmodule Signalrex.WSClient do
   use Enchufeweb
 
   require Logger

@@ -47,15 +47,15 @@ defmodule Signalrex do
       def handle_cast(_msg, state), do: {:noreply, state}
 
       def handle_info(:init, state) do
-        result = connect(state)
-        {:noreply, state}
+        new_state = connect(state)
+        {:noreply, new_state}
       end
 
       def handle_info({:signalr_message, data}, state) do
         new_state = 
           case data do
             "{}" ->
-              IO.puts "Heart beat: #{Time.utc_now()}"
+              Signalrex.HeartBeat.new_heart_beat(state.heart_beat_pid)
               state
             msg ->  
               case process_message(data, state) do
@@ -89,7 +89,9 @@ defmodule Signalrex do
               {:error, error} ->
                 Logger.error("Connecting error: #{error}")
               {:ok, ws_client} ->
-                receive_init_response(args)
+                {:ok, heart_beat_pid} = Signalrex.HeartBeat.start_link(negotiate_result, [])
+                arguments = Map.put(args, :heart_beat_pid, heart_beat_pid)
+                receive_init_response(arguments)
             end
         end
       end
@@ -126,7 +128,7 @@ defmodule Signalrex do
                 |> Map.put(:client, self())
                 |> Map.put(:init_message, get_initial_message()),
             ]
-            |> WSClient.start_link() 
+            |> Signalrex.WSClient.start_link() 
           {:error, error} -> 
             {:error, error}
         end
@@ -246,7 +248,8 @@ defmodule Signalrex do
           after 
             @waiting_for_init_message ->
               Logger.error("The init message has not arrived in #{@waiting_for_init_message} ms.")
-        end        
+        end  
+        args      
       end
     
     end  
