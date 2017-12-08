@@ -31,7 +31,7 @@ defmodule Signalrex do
 
       @init_time                    10
       @init_response_attempts       3
-      @waiting_for_init_message     500
+      @waiting_for_init_message     1_000
       
       def start_link(args, opts) do
         GenServer.start_link(__MODULE__, args, opts)
@@ -52,12 +52,20 @@ defmodule Signalrex do
       end
 
       def handle_info({:signalr_message, data}, state) do
-        case process_message(data, state) do
-          {:ok, new_state} ->
-            {:noreply, new_state}
-          {:error, error} ->
-            {:noreply, state}
-        end
+        new_state = 
+          case data do
+            "{}" ->
+              IO.puts "Heart beat: #{Time.utc_now()}"
+              state
+            msg ->  
+              case process_message(data, state) do
+                {:ok, new_state} ->
+                  new_state
+                {:error, error} ->
+                  state
+              end
+          end
+        {:noreply, new_state}
       end
 
       def handle_info(_msg, state), do: {:noreply, state}
@@ -76,9 +84,10 @@ defmodule Signalrex do
               |> Map.get(:connect_query_params)
               |> Keyword.put(:connection_token, Map.get(negotiate_result, :connection_token))
             base_ws_url = Map.get(args, :base_ws_url)
+            IO.inspect cqp
             case do_connect(base_ws_url, cqp, ws_opts) do
               {:error, error} ->
-                Logger.error("Negotiating error: #{error}")
+                Logger.error("Connecting error: #{error}")
               {:ok, ws_client} ->
                 receive_init_response(args)
             end
@@ -88,6 +97,7 @@ defmodule Signalrex do
       defp do_negotiate(base_url, headers, query_params) do
         Logger.info("Negotiating ...")
         response = get(negotiate_client(base_url, headers, query_params), "/negotiate")
+        IO.inspect response
         if response.body["TryWebSockets"] do
           {
             :ok,
@@ -111,9 +121,10 @@ defmodule Signalrex do
           {:ok, url} -> 
             [
               url: url, 
-              ws_opts: ws_opts, 
-              init_message: get_initial_message(),
-              client: self()
+              ws_opts: 
+                ws_opts
+                |> Map.put(:client, self())
+                |> Map.put(:init_message, get_initial_message()),
             ]
             |> WSClient.start_link() 
           {:error, error} -> 
@@ -141,7 +152,9 @@ defmodule Signalrex do
       end       
 
       defp start_client(base_url, headers, query_params) do
-        create_client(base_url, headers, start_query_params(query_params))
+        qp = start_query_params(query_params)
+        IO.inspect qp
+        create_client(base_url, headers, qp)
       end         
 
       defp create_client(base_url, headers \\ %{}, query_params \\ []) do
@@ -168,7 +181,7 @@ defmodule Signalrex do
       end
 
       defp connection_query_params(query_params) do
-        do_default_query_params(query_params, true)
+        do_default_query_params(query_params, false)
       end
 
       defp start_query_params(query_params) do
@@ -191,7 +204,7 @@ defmodule Signalrex do
         query_params = 
           case Keyword.pop(query_params, :connection_data) do
             {nil, params} -> params
-            {cd, params} -> add_query_params(params, [connectionData: Poison.encode!(cd)], encoded?)
+            {cd, params} -> add_query_params(params, [connectionData: cd], encoded?)
           end          
 
         Keyword.merge(default, query_params)   
@@ -212,11 +225,11 @@ defmodule Signalrex do
           current,
           Enum.map(new, fn {k, v} -> {k, URI.encode_www_form(v)} end)
         )
-      end  
+      end       
       
       defp receive_init_response(args, attempts \\ @init_response_attempts) do
-        receive do
-          msg ->
+        receive do 
+          {:signalr_message, msg} ->
             case Poison.decode(msg) do
               {:ok, %{"S" => 1, "M" => []}} ->
                 base_url = Map.get(args, :url)
