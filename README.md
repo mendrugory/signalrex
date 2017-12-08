@@ -30,7 +30,7 @@ args = %{
 		connect_query_params: ["my_auth": "asdfasdf", "connectionData": "[{\"id\":\"my_data\"}]"],
 		base_ws_url: "ws://9.5.6.7:5555/signalr",
 		start_headers: %{},
-		start_query_params: ["auth_token": "asdfasdf", "connectionData": "[{\"id\":\"my_data\"}]"]
+		start_query_params: ["my_auth": "asdfasdf", "connectionData": "[{\"id\":\"my_data\"}]"]
 	}
 
 
