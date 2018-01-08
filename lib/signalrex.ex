@@ -122,6 +122,7 @@ defmodule Signalrex do
           {:ok, url} -> 
             [
               url: url, 
+              extra_headers: Map.get(ws_opts, :extra_headers, []),
               ws_opts: 
                 ws_opts
                 |> Map.put(:client, self())
