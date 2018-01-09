@@ -90,8 +90,10 @@ defmodule Signalrex do
                 Logger.error("Connecting error: #{error}")
               {:ok, ws_client} ->
                 {:ok, heart_beat_pid} = Signalrex.HeartBeat.start_link(negotiate_result, [])
-                arguments = Map.put(args, :heart_beat_pid, heart_beat_pid)
-                receive_init_response(arguments)
+                args
+                |> Map.put(:heart_beat_pid, heart_beat_pid)
+                |> Map.put(:ws_client_pid, ws_client)
+                |> receive_init_response
             end
         end
       end
