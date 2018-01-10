@@ -37,12 +37,19 @@ defmodule Signalrex do
         GenServer.start_link(__MODULE__, args, opts)
       end      
 
+      def send(signalrex, message), do: GenServer.cast(signalrex, {:send, message})
+
       def init(args) do
         Process.send_after(self(), :init, @init_time)
         {:ok, args}
       end
 
       def handle_call(_msg, _from, state), do: {:reply, :ok, state}
+
+      def handle_cast({:send, message}, state) do
+        Enchufeweb.ws_send(state.ws_client_pid, message)
+        {:noreply, state}
+      end
 
       def handle_cast(_msg, state), do: {:noreply, state}
 
@@ -88,9 +95,12 @@ defmodule Signalrex do
             case do_connect(base_ws_url, cqp, ws_opts) do
               {:error, error} ->
                 Logger.error("Connecting error: #{error}")
-              {:ok, ws_client} ->
+              {:ok, ws_client_pid} ->
                 {:ok, heart_beat_pid} = Signalrex.HeartBeat.start_link(negotiate_result, [])
-                arguments = Map.put(args, :heart_beat_pid, heart_beat_pid)
+                arguments = 
+                  args
+                  |> Map.put(:ws_client_pid, ws_client_pid)
+                  |> Map.put(:heart_beat_pid, heart_beat_pid)
                 receive_init_response(arguments)
             end
         end
