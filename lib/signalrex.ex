@@ -47,7 +47,7 @@ defmodule Signalrex do
       def handle_call(_msg, _from, state), do: {:reply, :ok, state}
 
       def handle_cast({:send, message}, state) do
-        Enchufeweb.ws_send(state.ws_client_pid, message)
+        Signalrex.WSClient.ws_send(state.ws_client_pid, message)
         {:noreply, state}
       end
 
