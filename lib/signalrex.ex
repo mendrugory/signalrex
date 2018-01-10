@@ -128,7 +128,6 @@ defmodule Signalrex do
               ws_opts: 
                 ws_opts
                 |> Map.put(:client, self())
-                |> Map.put(:init_message, get_initial_message()),
             ]
             |> Signalrex.WSClient.start_link() 
           {:error, error} -> 
