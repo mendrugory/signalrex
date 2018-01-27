@@ -1,6 +1,7 @@
 defmodule Signalrex.HeartBeat do
+  @moduledoc false
+  
   use GenServer
-
   require Logger
 
   def start_link(args, opts) do

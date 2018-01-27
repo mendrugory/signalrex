@@ -18,8 +18,25 @@ defmodule Signalrex do
   @type data :: any
   @type error :: any
 
-  @callback get_initial_message() :: binary
+  @doc """
+  Callback that has to return the first message that will be sent to the SignalR server.
+  """
+  @callback get_initial_message() :: map
+
+  @doc """
+  Callback that will be called when a message arrives.
+  """
   @callback process_message(data, state) :: {:ok, state} | {:error, error}
+
+  @doc """
+  Function that will send the given message through the given signalrex process.
+  """
+  def send(signalrex, message), do: GenServer.cast(signalrex, {:send, message})
+
+  @doc """
+  Function that will send the given message through the given signalrex process.
+  """
+  def send2(signalrex, message), do: GenServer.cast(signalrex, {:send2, message})  
 
   defmacro __using__(_) do
     quote location: :keep do
@@ -37,8 +54,6 @@ defmodule Signalrex do
         GenServer.start_link(__MODULE__, args, opts)
       end      
 
-      def send(signalrex, message), do: GenServer.cast(signalrex, {:send, message})
-
       def init(args) do
         Process.send_after(self(), :init, @init_time)
         {:ok, args}
@@ -50,6 +65,11 @@ defmodule Signalrex do
         Signalrex.WSClient.ws_send(state.ws_client_pid, message)
         {:noreply, state}
       end
+
+      def handle_cast({:send2, message}, state) do
+        IO.puts "We have received the message: #{inspect message}"
+        {:noreply, state}
+      end      
 
       def handle_cast(_msg, state), do: {:noreply, state}
 
@@ -136,7 +156,7 @@ defmodule Signalrex do
               ws_opts: 
                 ws_opts
                 |> Map.put(:client, self())
-                |> Map.put(:init_message, get_initial_message()),
+                |> Map.put(:init_message, Poison.encode(get_initial_message())),
             ]
             |> Signalrex.WSClient.start_link() 
           {:error, error} -> 

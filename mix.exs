@@ -12,8 +12,12 @@ defmodule Signalrex.Mixfile do
       description: description(),
       package: package(),
       deps: deps(),
-      docs: [main: "Signalrex", source_ref: "v#{@version}",
-      source_url: "https://github.com/mendrugory/signalrex"]
+      docs: [
+        main: "readme", 
+        source_ref: "v#{@version}",
+        extras: ["README.md"],
+        source_url: "https://github.com/mendrugory/signalrex"
+      ]
     ]
   end
 

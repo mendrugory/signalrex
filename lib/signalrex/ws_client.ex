@@ -1,6 +1,7 @@
 defmodule Signalrex.WSClient do
+  @moduledoc false
+  
   use Enchufeweb
-
   require Logger
 
   def handle_message(data, state) do 
