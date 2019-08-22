@@ -11,7 +11,7 @@ defmodule Signalrex.WSClient do
   end
   
   def handle_connection(_, state) do 
-    init_message = Map.get(Keyword.get(state, :ws_opts), :init_message, " ")
+    {:ok, init_message} = Map.get(Keyword.get(state, :ws_opts), :init_message, " ")
     {:reply, init_message, state}
   end
 
